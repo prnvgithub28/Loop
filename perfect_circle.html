@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Draw a Perfect Circle</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600;700&family=Kalam:wght@300;400;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --chalk: #f5f0e8;
+    --chalk-dim: #c8c0b0;
+    --board: #f9f7f2;
+    --board-dark: #ede8de;
+    --ink: #1a1a2e;
+    --ink-light: #2d2d44;
+    --accent: #2563eb;
+    --red: #dc2626;
+    --green: #16a34a;
+    --tray: #d4cfc4;
+    --shadow: rgba(0,0,0,0.15);
+    --line-color: rgba(180, 170, 155, 0.35);
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: var(--board);
+    font-family: 'Kalam', cursive;
+    user-select: none;
+  }
+
+  /* Whiteboard texture */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      repeating-linear-gradient(0deg, transparent, transparent 39px, var(--line-color) 39px, var(--line-color) 40px),
+      repeating-linear-gradient(90deg, transparent, transparent 39px, var(--line-color) 39px, var(--line-color) 40px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Subtle paper grain */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    opacity: 0.5;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Whiteboard frame shadow */
+  .board-frame {
+    position: fixed; inset: 0;
+    box-shadow: inset 0 0 60px rgba(0,0,0,0.08), inset 0 0 20px rgba(0,0,0,0.04);
+    pointer-events: none;
+    z-index: 10;
+  }
+
+  canvas {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    cursor: crosshair;
+    z-index: 1;
+  }
+
+  /* Top bar */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0;
+    height: 60px;
+    background: linear-gradient(180deg, rgba(180,170,150,0.6) 0%, rgba(180,170,150,0) 100%);
+    border-bottom: 2px solid rgba(160,150,130,0.4);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 20;
+    padding: 0 20px;
+  }
+
+  .title {
+    font-family: 'Caveat', cursive;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: 1px;
+    opacity: 0.75;
+  }
+
+  .subtitle {
+    font-family: 'Kalam', cursive;
+    font-size: 13px;
+    color: var(--ink);
+    opacity: 0.45;
+    margin-top: 1px;
+  }
+
+  /* Instructions */
+  .instructions {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 5;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+  }
+
+  .instructions.hidden { opacity: 0; }
+
+  .instructions-icon {
+    font-size: 64px;
+    opacity: 0.2;
+    display: block;
+    margin-bottom: 12px;
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+  .instructions h2 {
+    font-family: 'Caveat', cursive;
+    font-size: 42px;
+    font-weight: 700;
+    color: var(--ink);
+    opacity: 0.18;
+    line-height: 1.1;
+  }
+
+  .instructions p {
+    font-size: 16px;
+    color: var(--ink);
+    opacity: 0.15;
+    margin-top: 8px;
+  }
+
+  /* Score overlay */
+  .score-overlay {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 30;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  .score-overlay.visible {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .score-card {
+    background: rgba(249, 247, 242, 0.92);
+    backdrop-filter: blur(12px);
+    border: 2px solid rgba(160,150,130,0.4);
+    border-radius: 16px;
+    padding: 36px 48px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.12), 0 4px 16px rgba(0,0,0,0.08);
+    animation: pop-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    max-width: 380px;
+    width: 90%;
+  }
+
+  @keyframes pop-in {
+    from { transform: scale(0.7) translateY(20px); opacity: 0; }
+    to { transform: scale(1) translateY(0); opacity: 1; }
+  }
+
+  .score-label {
+    font-family: 'Kalam', cursive;
+    font-size: 14px;
+    color: var(--ink);
+    opacity: 0.55;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .score-number {
+    font-family: 'Caveat', cursive;
+    font-size: 96px;
+    font-weight: 700;
+    line-height: 1;
+    margin: 8px 0;
+    background: linear-gradient(135deg, #1a1a2e, #2563eb);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .score-number.perfect {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 1.5s ease infinite;
+  }
+
+  @keyframes shimmer {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.3); }
+  }
+
+  .score-grade {
+    font-family: 'Caveat', cursive;
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .score-verdict {
+    font-family: 'Kalam', cursive;
+    font-size: 15px;
+    opacity: 0.6;
+    margin-bottom: 24px;
+    line-height: 1.5;
+  }
+
+  .score-stats {
+    display: flex; gap: 20px; justify-content: center;
+    margin-bottom: 24px;
+  }
+
+  .stat {
+    text-align: center;
+  }
+
+  .stat-val {
+    font-family: 'Caveat', cursive;
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .stat-label {
+    font-size: 11px;
+    color: var(--ink);
+    opacity: 0.5;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .try-again-btn {
+    background: var(--ink);
+    color: var(--board);
+    border: none;
+    border-radius: 10px;
+    padding: 12px 32px;
+    font-family: 'Caveat', cursive;
+    font-size: 20px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    letter-spacing: 0.5px;
+  }
+
+  .try-again-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+  }
+
+  .try-again-btn:active {
+    transform: translateY(0);
+  }
+
+  /* Eraser/clear button */
+  .clear-btn {
+    position: fixed;
+    bottom: 28px; right: 28px;
+    background: var(--tray);
+    border: 2px solid rgba(160,150,130,0.5);
+    border-radius: 12px;
+    padding: 10px 18px;
+    font-family: 'Caveat', cursive;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--ink);
+    opacity: 0.7;
+    cursor: pointer;
+    z-index: 20;
+    transition: opacity 0.2s, transform 0.15s;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .clear-btn:hover { opacity: 1; transform: scale(1.04); }
+
+  /* Confetti */
+  .confetti-piece {
+    position: fixed;
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    pointer-events: none;
+    z-index: 100;
+    animation: confetti-fall 2s ease-in forwards;
+  }
+
+  @keyframes confetti-fall {
+    0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+    100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+  }
+
+  /* Best score indicator */
+  .best-score {
+    position: fixed;
+    top: 72px; right: 20px;
+    font-family: 'Caveat', cursive;
+    font-size: 16px;
+    color: var(--ink);
+    opacity: 0.35;
+    z-index: 20;
+    text-align: right;
+  }
+
+  .best-score span {
+    display: block;
+    font-size: 22px;
+    font-weight: 700;
+    opacity: 1;
+  }
+
+  /* Drawing count */
+  .attempt-counter {
+    position: fixed;
+    top: 72px; left: 20px;
+    font-family: 'Caveat', cursive;
+    font-size: 15px;
+    color: var(--ink);
+    opacity: 0.3;
+    z-index: 20;
+  }
+</style>
+</head>
+<body>
+
+<div class="board-frame"></div>
+<canvas id="canvas"></canvas>
+
+<div class="topbar">
+  <div style="text-align:center">
+    <div class="title">✦ Draw a Perfect Circle</div>
+    <div class="subtitle">Can you do it?</div>
+  </div>
+</div>
+
+<div class="instructions" id="instructions">
+  <span class="instructions-icon">○</span>
+  <h2>Draw a circle.<br>Make it perfect.</h2>
+  <p>Click and drag to draw your circle</p>
+</div>
+
+<div class="score-overlay" id="scoreOverlay">
+  <div class="score-card" id="scoreCard">
+    <div class="score-label">Your Score</div>
+    <div class="score-number" id="scoreNum">--</div>
+    <div class="score-grade" id="scoreGrade"></div>
+    <div class="score-verdict" id="scoreVerdict"></div>
+    <div class="score-stats" id="scoreStats"></div>
+    <button class="try-again-btn" onclick="resetGame()">Try Again</button>
+  </div>
+</div>
+
+<button class="clear-btn" onclick="resetGame()">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+  Clear
+</button>
+
+<div class="best-score" id="bestScore" style="display:none">
+  Best<span id="bestScoreVal">--</span>
+</div>
+
+<div class="attempt-counter" id="attemptCounter"></div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let drawing = false;
+let points = [];
+let hasDrawn = false;
+let animFrame = null;
+let bestScore = null;
+let attempts = 0;
+let scoreVisible = false;
+let drawnPath = [];
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  redrawStored();
+}
+
+window.addEventListener('resize', resize);
+resize();
+
+function getPos(e) {
+  const r = canvas.getBoundingClientRect();
+  if (e.touches) {
+    return { x: e.touches[0].clientX - r.left, y: e.touches[0].clientY - r.top };
+  }
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+canvas.addEventListener('mousedown', startDraw);
+canvas.addEventListener('mousemove', draw);
+canvas.addEventListener('mouseup', endDraw);
+canvas.addEventListener('mouseleave', endDraw);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); startDraw(e); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); draw(e); }, { passive: false });
+canvas.addEventListener('touchend', e => { e.preventDefault(); endDraw(e); }, { passive: false });
+
+function startDraw(e) {
+  if (scoreVisible) return;
+  drawing = true;
+  points = [];
+  const pos = getPos(e);
+  points.push(pos);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  document.getElementById('instructions').classList.add('hidden');
+}
+
+function draw(e) {
+  if (!drawing) return;
+  const pos = getPos(e);
+  points.push(pos);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawPath(points, '#1a1a2e', 2.5, 0.85);
+}
+
+function endDraw(e) {
+  if (!drawing || points.length < 10) { drawing = false; return; }
+  drawing = false;
+  hasDrawn = true;
+  drawnPath = [...points];
+  attempts++;
+  updateAttemptCounter();
+
+  setTimeout(() => {
+    const result = analyzeCircle(points);
+    showScore(result);
+  }, 200);
+}
+
+function drawPath(pts, color, width, alpha) {
+  if (pts.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) {
+    const prev = pts[i - 1];
+    const curr = pts[i];
+    const mx = (prev.x + curr.x) / 2;
+    const my = (prev.y + curr.y) / 2;
+    ctx.quadraticCurveTo(prev.x, prev.y, mx, my);
+  }
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.globalAlpha = alpha;
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function drawIdealCircle(cx, cy, r, score) {
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  const hue = score >= 90 ? 142 : score >= 75 ? 48 : score >= 55 ? 20 : 0;
+  ctx.strokeStyle = `hsl(${hue}, 70%, 45%)`;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 5]);
+  ctx.globalAlpha = 0.4;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1;
+}
+
+function redrawStored() {
+  if (drawnPath.length > 0) drawPath(drawnPath, '#1a1a2e', 2.5, 0.85);
+}
+
+// --- Circle Analysis ---
+function analyzeCircle(pts) {
+  if (pts.length < 20) return null;
+
+  // Centroid
+  const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+  const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+
+  // Radii
+  const radii = pts.map(p => Math.hypot(p.x - cx, p.y - cy));
+  const rMean = radii.reduce((a, b) => a + b, 0) / radii.length;
+  const rMax = Math.max(...radii);
+  const rMin = Math.min(...radii);
+
+  // Radius variance score
+  const rVariance = radii.reduce((s, r) => s + Math.abs(r - rMean), 0) / radii.length;
+  const rScore = Math.max(0, 100 - (rVariance / rMean) * 200);
+
+  // Closure: distance from last to first point
+  const closure = Math.hypot(pts[pts.length - 1].x - pts[0].x, pts[pts.length - 1].y - pts[0].y);
+  const closureScore = Math.max(0, 100 - (closure / rMean) * 80);
+
+  // Coverage: check angular coverage
+  const angles = pts.map(p => Math.atan2(p.y - cy, p.x - cx));
+  const angBuckets = new Array(36).fill(false);
+  angles.forEach(a => {
+    const idx = Math.floor(((a + Math.PI) / (2 * Math.PI)) * 36) % 36;
+    angBuckets[idx] = true;
+  });
+  const coverageScore = (angBuckets.filter(Boolean).length / 36) * 100;
+
+  // Eccentricity: fit bounding ellipse
+  const xs = pts.map(p => p.x);
+  const ys = pts.map(p => p.y);
+  const w = Math.max(...xs) - Math.min(...xs);
+  const h = Math.max(...ys) - Math.min(...ys);
+  const eccentricity = Math.min(w, h) / Math.max(w, h);
+  const eccentricityScore = eccentricity * 100;
+
+  // Min size check
+  if (rMean < 30) return { score: 0, cx, cy, r: rMean, tooSmall: true };
+
+  // Weighted final score
+  const score = Math.round(
+    rScore * 0.40 +
+    closureScore * 0.25 +
+    coverageScore * 0.20 +
+    eccentricityScore * 0.15
+  );
+
+  return {
+    score: Math.min(100, score),
+    cx, cy, r: rMean,
+    rScore: Math.round(rScore),
+    closureScore: Math.round(closureScore),
+    coverageScore: Math.round(coverageScore),
+    eccentricityScore: Math.round(eccentricityScore)
+  };
+}
+
+function getGrade(score) {
+  if (score >= 97) return { grade: '🏆 Legendary', verdict: "That's basically impossible. Are you even human?", color: '#d97706' };
+  if (score >= 90) return { grade: '⭐ Perfect', verdict: "Wow. That's genuinely impressive.", color: '#16a34a' };
+  if (score >= 80) return { grade: '✨ Excellent', verdict: "A nearly flawless circle. You've got the touch.", color: '#2563eb' };
+  if (score >= 70) return { grade: '👍 Great', verdict: "Pretty solid! Just a touch off round.", color: '#4f46e5' };
+  if (score >= 55) return { grade: '😐 Decent', verdict: "Not bad, but your geometry teacher might disagree.", color: '#78716c' };
+  if (score >= 40) return { grade: '😬 Rough', verdict: "That's more of a... creative oval.", color: '#b45309' };
+  return { grade: '💀 Yikes', verdict: "A bold artistic statement. Circles are hard.", color: '#dc2626' };
+}
+
+function showScore(result) {
+  if (!result) return;
+  scoreVisible = true;
+
+  const { score, cx, cy, r } = result;
+
+  // Draw ideal circle overlay
+  drawIdealCircle(cx, cy, r, score);
+
+  const overlay = document.getElementById('scoreOverlay');
+  const scoreNum = document.getElementById('scoreNum');
+  const scoreGrade = document.getElementById('scoreGrade');
+  const scoreVerdict = document.getElementById('scoreVerdict');
+  const scoreStats = document.getElementById('scoreStats');
+  const scoreCard = document.getElementById('scoreCard');
+
+  const { grade, verdict, color } = getGrade(score);
+
+  scoreNum.textContent = score + '%';
+  scoreNum.className = 'score-number' + (score >= 97 ? ' perfect' : '');
+  scoreNum.style.background = score >= 97 ? '' : `linear-gradient(135deg, #1a1a2e, ${color})`;
+  scoreNum.style.webkitBackgroundClip = 'text';
+  scoreGrade.textContent = grade;
+  scoreGrade.style.color = color;
+  scoreVerdict.textContent = verdict;
+
+  scoreStats.innerHTML = `
+    <div class="stat"><div class="stat-val">${result.rScore}%</div><div class="stat-label">Roundness</div></div>
+    <div class="stat"><div class="stat-val">${result.closureScore}%</div><div class="stat-label">Closure</div></div>
+    <div class="stat"><div class="stat-val">${result.coverageScore}%</div><div class="stat-label">Coverage</div></div>
+  `;
+
+  overlay.classList.add('visible');
+
+  // Best score
+  if (bestScore === null || score > bestScore) {
+    bestScore = score;
+    const el = document.getElementById('bestScoreVal');
+    if (el) el.textContent = score + '%';
+    document.getElementById('bestScore').style.display = 'block';
+  }
+
+  // Confetti for good scores
+  if (score >= 80) spawnConfetti(score);
+}
+
+function spawnConfetti(score) {
+  const count = Math.floor((score - 75) * 2);
+  const colors = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#8b5cf6', '#ec4899'];
+  for (let i = 0; i < count; i++) {
+    setTimeout(() => {
+      const el = document.createElement('div');
+      el.className = 'confetti-piece';
+      el.style.left = Math.random() * 100 + 'vw';
+      el.style.top = '-10px';
+      el.style.background = colors[Math.floor(Math.random() * colors.length)];
+      el.style.animationDuration = (1.5 + Math.random()) + 's';
+      el.style.animationDelay = Math.random() * 0.5 + 's';
+      el.style.width = el.style.height = (6 + Math.random() * 8) + 'px';
+      el.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }, i * 60);
+  }
+}
+
+function updateAttemptCounter() {
+  const el = document.getElementById('attemptCounter');
+  if (attempts > 0) el.textContent = `Attempt #${attempts}`;
+}
+
+function resetGame() {
+  scoreVisible = false;
+  points = [];
+  drawnPath = [];
+  hasDrawn = false;
+  document.getElementById('scoreOverlay').classList.remove('visible');
+  document.getElementById('instructions').classList.remove('hidden');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+
+// Keyboard shortcut
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' || e.key === 'r' || e.key === 'R') resetGame();
+});
+</script>
+</body>
+</html>
